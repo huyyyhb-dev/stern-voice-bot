@@ -1,0 +1,8 @@
+.env
+bot.log
+*.pyc
+__pycache__
+.railway/
+*.bat
+*.pyw
+setup_autostart.py
