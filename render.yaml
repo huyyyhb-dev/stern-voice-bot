@@ -1,9 +1,7 @@
 services:
   - type: web
     name: stern-voice-bot
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python tts_telegram_bot.py
+    runtime: docker
     plan: free
     envVars:
       - key: ELEVENLABS_API_KEY
