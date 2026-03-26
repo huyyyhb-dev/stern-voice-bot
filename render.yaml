@@ -1,0 +1,12 @@
+services:
+  - type: worker
+    name: stern-voice-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python tts_telegram_bot.py
+    plan: free
+    envVars:
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
