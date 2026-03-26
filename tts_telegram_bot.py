@@ -1,12 +1,7 @@
 """
 Telegram-бот для озвучки текста голосом Якова Борисовича (ElevenLabs).
 Отправляешь текст — получаешь аудио. Не нравится — отправляешь снова.
-
-Настройка:
-1. pip install python-telegram-bot elevenlabs
-2. Создай бота через @BotFather, получи токен
-3. Впиши токен в .env (TELEGRAM_BOT_TOKEN=...)
-4. python tts_telegram_bot.py
+Работает на Render.com (бесплатно) через webhook.
 """
 
 import os
@@ -16,61 +11,38 @@ from pathlib import Path
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from aiohttp import web
 
-# --- Настройки ---
-SCRIPT_DIR = Path(__file__).parent
-os.chdir(SCRIPT_DIR)
-load_dotenv(SCRIPT_DIR / ".env")
+load_dotenv(Path(__file__).parent / ".env")
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-VOICE_ID = "ZGrbqCZtSzXfcK2bXLPd"  # Яков Борисович итоговый
+VOICE_ID = "ZGrbqCZtSzXfcK2bXLPd"
 MODEL_ID = "eleven_multilingual_v2"
-
-# Кто может пользоваться ботом (Telegram user ID). Пустой список = все.
-# Узнать свой ID: отправь /start боту @userinfobot
+PORT = int(os.getenv("PORT", 10000))
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 ALLOWED_USERS: list[int] = []
 
-LOG_FILE = Path(__file__).parent / "bot.log"
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 log = logging.getLogger(__name__)
 
 
 def voice_text(text: str) -> bytes:
-    """Озвучивает текст через ElevenLabs, возвращает MP3 bytes."""
     from elevenlabs.client import ElevenLabs
     from elevenlabs import VoiceSettings
-
     client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-
     response = client.text_to_speech.convert(
-        text=text,
-        voice_id=VOICE_ID,
-        model_id=MODEL_ID,
+        text=text, voice_id=VOICE_ID, model_id=MODEL_ID,
         voice_settings=VoiceSettings(
-            stability=0.3,
-            similarity_boost=0.75,
-            style=0.7,
-            use_speaker_boost=True,
+            stability=0.3, similarity_boost=0.75,
+            style=0.7, use_speaker_boost=True,
         ),
     )
-
-    # response — генератор байтов
-    audio = b"".join(chunk for chunk in response)
-    return audio
+    return b"".join(chunk for chunk in response)
 
 
 def is_allowed(user_id: int) -> bool:
-    if not ALLOWED_USERS:
-        return True
-    return user_id in ALLOWED_USERS
+    return not ALLOWED_USERS or user_id in ALLOWED_USERS
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,35 +82,42 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     size_kb = len(audio) / 1024
     await msg.delete()
 
-    # Отправляем как голосовое (можно прослушать прямо в чате)
     await update.message.reply_voice(
         voice=io.BytesIO(audio),
         caption=f"{len(text)} симв. / {size_kb:.0f} КБ",
     )
 
-    # И как файл (чтобы скачать MP3)
     buf = io.BytesIO(audio)
     buf.name = "voice.mp3"
     await update.message.reply_document(
-        document=buf,
-        caption="MP3 для скачивания",
+        document=buf, caption="MP3 для скачивания",
     )
 
 
+async def health(request):
+    return web.Response(text="ok")
+
+
 def main():
-    if not TELEGRAM_BOT_TOKEN:
-        log.error("Нет TELEGRAM_BOT_TOKEN в .env")
+    if not TELEGRAM_BOT_TOKEN or not ELEVENLABS_API_KEY:
+        log.error("Нет ключей в переменных окружения")
         return
 
-    if not ELEVENLABS_API_KEY:
-        log.error("Нет ELEVENLABS_API_KEY в .env")
-        return
-
-    log.info("Бот запущен! Отправь текст в Telegram.")
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.run_polling()
+
+    if RENDER_URL:
+        webhook_url = f"{RENDER_URL}/webhook"
+        log.info(f"Webhook mode: {webhook_url}")
+        app.run_webhook(
+            listen="0.0.0.0", port=PORT,
+            webhook_url=webhook_url,
+            url_path="/webhook",
+        )
+    else:
+        log.info("Polling mode (local)")
+        app.run_polling()
 
 
 if __name__ == "__main__":
