@@ -1,6 +1,5 @@
 """
 Telegram-бот для озвучки текста голосом Якова Борисовича (ElevenLabs).
-Отправляешь текст — получаешь аудио. Не нравится — отправляешь снова.
 Работает на Render.com (бесплатно) через webhook.
 """
 
@@ -11,7 +10,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from aiohttp import web
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -20,7 +18,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 VOICE_ID = "ZGrbqCZtSzXfcK2bXLPd"
 MODEL_ID = "eleven_multilingual_v2"
 PORT = int(os.getenv("PORT", 10000))
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+WEBHOOK_URL = os.getenv("RENDER_EXTERNAL_URL", "https://stern-voice-bot.onrender.com")
 ALLOWED_USERS: list[int] = []
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -94,30 +92,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def health(request):
-    return web.Response(text="ok")
-
-
 def main():
     if not TELEGRAM_BOT_TOKEN or not ELEVENLABS_API_KEY:
-        log.error("Нет ключей в переменных окружения")
+        log.error("Нет ключей!")
         return
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    if RENDER_URL:
-        webhook_url = f"{RENDER_URL}/webhook"
-        log.info(f"Webhook mode: {webhook_url}")
-        app.run_webhook(
-            listen="0.0.0.0", port=PORT,
-            webhook_url=webhook_url,
-            url_path="/webhook",
-        )
-    else:
-        log.info("Polling mode (local)")
-        app.run_polling()
+    webhook_url = f"{WEBHOOK_URL}/webhook"
+    log.info(f"Starting webhook: {webhook_url} on port {PORT}")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=webhook_url,
+        url_path="/webhook",
+    )
 
 
 if __name__ == "__main__":
