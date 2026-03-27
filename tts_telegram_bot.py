@@ -32,8 +32,8 @@ def voice_text(text: str) -> bytes:
     response = client.text_to_speech.convert(
         text=text, voice_id=VOICE_ID, model_id=MODEL_ID,
         voice_settings=VoiceSettings(
-            stability=0.3, similarity_boost=0.75,
-            style=0.7, use_speaker_boost=True,
+            stability=0.75, similarity_boost=1.0,
+            style=0.0, use_speaker_boost=True,
         ),
     )
     return b"".join(chunk for chunk in response)
